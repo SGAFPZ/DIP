@@ -24,39 +24,53 @@ class Deformation(object):
 		self.w_target = self.n_grid * self.w_grid + 1
 		self.padded_image = np.pad(img, ((0, self.h_target - h), (0, self.w_target - w)), mode='edge')
 
-	def MLS(self, v):
+	def getwi(self, v):
+		w = np.zeros((self.n_nodes)**2, float)
+		for i in range(len(self.p)):
+			if self.p[i][0] == v[0] and self.p[i][1] == v[1]:
+				w[i] = float(100) # infinite
+			else:
+				w[i] = float(1)/((self.p[i][0]-v[0])**2+(self.p[i][1]-v[1])**2)
+		return w
+
+	def getPSandQS(self, w):
+		ps = np.array([0.0,0.0])
+		qs = np.array([0.0,0.0])
+		sw = 0
+		for i in range(len(self.p)):
+			
+			ps += w[i]*self.p[i]
+			qs += w[i]*self.q[i]
+			sw += w[i]
+
+		ps = ps/sw
+		qs = qs/sw
+		return ps, qs
+
+	def getPHandQH(self, ps, qs):
+		ph = []
+		qh = []
+		for i in range(len(self.p)):
+			ph.append(self.p[i]-ps)
+			qh.append(self.q[i]-qs)
+		return ph, qh
+
+
+	def affine(self, v):
 		A = np.zeros([2,2])
 		B = np.zeros([2,2])
 		M = np.zeros([2,2])
 		w = np.zeros((self.n_nodes)**2, float)
 
 		#compute Wi
-		for i in range(len(self.p)):
-			if self.p[i][0] == v[0] and self.p[i][1] == v[1]:
-				w[i] = float(100) # infinite
-			else:
-				w[i] = float(1)/((self.p[i][0]-v[0])**2+(self.p[i][1]-v[1])**2)
-		pc = np.zeros(2)
-		qc = np.zeros(2)
-		sw = 0
-		for i in range(len(self.p)):
-			
-			pc += w[i]*self.p[i]
-			qc += w[i]*self.q[i]
-			sw += w[i]
+		w = self.getwi(v)
 
-		pc = pc/sw
-		qc = qc/sw
+		ps, qs = self.getPSandQS(w)
 		# print(pc)
 		ph = []
 		qh = []
 
-
-		for i in range(len(self.p)):
-			# print(self.p[i].shape)
-			# print(pc.shape)
-			ph.append(self.p[i]-pc)
-			qh.append(self.q[i]-qc)
+		ph, qh = self.getPHandQH(ps, qs)
 
 		for i in range(len(self.p)):
 			A += w[i]*np.transpose([ph[i]]).dot([ph[i]])
@@ -64,9 +78,42 @@ class Deformation(object):
 
 		A = LA.inv(A)
 		M = A.dot(B)
-		t = np.array(v)-pc;
+		t = np.array(v)-ps;
 
-		return t.dot(M)+qc
+		return t.dot(M)+qs
+
+
+	def similar(self, v):
+		w = self.getwi(v)
+
+		ps, qs = self.getPSandQS(w)
+
+		ph = []
+		qh = []
+
+		ph, qh = self.getPHandQH(ps, qs)
+
+		mius = self.getMius(w, ph)
+
+		s = np.array([0.0, 0.0])
+
+		for i in range(len(self.p)):
+			m = np.row_stack((ph[i], [ph[i][1], -ph[i][0]]))
+			tt = [v[0]-ps[0], v[1]-ps[1]]
+			n = np.row_stack((tt, [tt[1], -tt[0]]))
+			Ai = w[i]*np.dot(m, n.T)
+			s += np.dot(qh[i], Ai)
+		return s/mius + qs
+
+
+
+
+	def getMius(self, w, ph):
+		mius = 0
+		for i in range(len(self.p)):
+			mius += w[i]*np.dot([ph[i]], np.transpose([ph[i]]))
+		return mius[0][0]
+		
 
 	def getPandQ(self):
 		self.p = [] # before deformation
@@ -81,9 +128,9 @@ class Deformation(object):
 				self.q.append([newx, newy])
 		self.p = np.array(self.p)
 		self.q = np.array(self.q)
+		# print(self.q)
 
 	def deform(self):
-		
 
 		target_image = np.zeros([self.h_target, self.w_target], dtype='uint8')
 		
@@ -97,7 +144,8 @@ class Deformation(object):
 		for i in range(0, self.h_target, self.interval):
 			for j in range(0, self.w_target, self.interval):
 				v = [i, j]
-				vv = self.MLS(v)
+				vv = self.similar(v)
+				# print(vv)
 				newx = int(max(0, min(vv[0], self.h_target - 1)))
 				newy = int(max(0, min(v[1], self.w_target - 1)))
 
