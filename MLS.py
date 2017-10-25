@@ -147,7 +147,7 @@ class Deformation(object):
 				vv = self.similar(v)
 				# print(vv)
 				newx = int(max(0, min(vv[0], self.h_target - 1)))
-				newy = int(max(0, min(v[1], self.w_target - 1)))
+				newy = int(max(0, min(vv[1], self.w_target - 1)))
 
 				target_image[i, j] = self.padded_image[newx][newy]
 				isVisited[i, j] = 1
